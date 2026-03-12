@@ -290,7 +290,9 @@ public :
    TH2F *f125_xy2d;
    TH1F *f125_el_x, *f125_el_y, *f125_el_Xmax, *f125_el_Ymax, *f125_el_xch_max, *f125_el_ych_max, *f125_el_chi2, *f125_el_fita;
    TH2F *f125_xamp2d, *f125_yamp2d, *f125_raw_xamp2d, *f125_el_evt_display, *f125_raw_yamp2d, *f125_el_fit, *f125_fit, *f125_el_clu2d;
-   
+   TH1F *hgemGainSum, *hgemGainSpread, *hgemGainMaxLate, *hgemGainSumLate;
+   TH2F *hgem2DGain, *hgemGainMultiplicity, *hgem2DMaxGain, *hgem2DMaxGainSingle;
+   TH2F *hgem2DGainLateTime, *hgem2DGainSumLateTime;
    TH2F *hevt, *hevtc, *hevti, *hevtf, *hevtL;
    
    //----- EVENT STRUCTURE -----

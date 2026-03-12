@@ -14,14 +14,16 @@
 #define DEBUG 0
 #define MAX_CLUST 500
 #define MAX_NODES 100
-#define USE_GNN    1
-#define USE_CLUST  1
+//#define USE_GNN    1
+//#define USE_CLUST  1
 #define USE_FIT    1
 #define USE_MAXPOS 1 //NEEDS IMPLEMENTED
 
 #define SAVE_TRACK_HITS
 //#define WRITE_CSV
 #define SAVE_PDF
+
+#define GAIN_CALIB
 
 //-- For single evt clustering display, uncomment BOTH:
 //#define SHOW_EVT_DISPLAY
@@ -49,7 +51,11 @@ int GetGEMXChan(int fch, int slot) {
   if (sl>7) sl=sl-2;
   if((sl>=gem_x_slot&&sl<gem_y_slot)) {
     int ch=sl*72+fch-gem_x_ch0;
-    if (ch==106 || ch==360) { return -1; } //remove noisey channels
+    #ifdef GAIN_CALIB
+      if (ch==10 || ch==11 || ch==12 || ch==13 || ch==190 || ch==191 || ch==192 || ch==193 || ch==149 || ch==351 || ch==346 || ch==369 || ch==370 || ch==371 || ch==372 || ch==373 || ch==374 || ch==97) { return -1; } //remove noisey channels
+    #else
+      if (ch==106 || ch==360) { return -1; } //remove noisey channels
+    #endif
     else { return ch; }
   } else { return -1; }
 }
@@ -89,6 +95,10 @@ void trdclass_halld25::Loop() {
   //TList *HistList = new TList();
   double THRESH=250; //-- GEM-TRD ADC threshold
   
+  #ifdef GAIN_CALIB
+    float FE55_THRESH=500.;
+  #endif
+  
   //========================================================================
   //            B o o k    H i s t o g r a m s
   //========================================================================
@@ -118,6 +128,18 @@ void trdclass_halld25::Loop() {
   
   //-- GEM-TRD X-Y Hit Displays
   TH2F *f125_xy2d = new TH2F("f125_xy2d","GEM-TRD Hit Display; Channel (X) ; Channel (Y) ",720,-0.5,719.5,360,-0.5,359.5);
+  
+  //-- Fe55 Gin Calib Plots --
+  hgemGainSum = new TH1F("hgemGainSum","Triple-GEM Pulse Cluster Sum; ADC Sum; Counts ",250,0.,10000);
+  hgemGainSpread = new TH1F("hgemGainSpread","Triple-GEM Pulse Cluster Spread; N Strips Fired; Counts ",12,-0.5,11.5);
+  hgemGainMultiplicity = new TH2F("hgemGainMultiplicity","Triple-GEM 2D Pulse Cluster Sum vs Strips; N Strips Fired; ADC Sum",12,-0.5,11.5,250,0.,10000);
+  hgem2DGain = new TH2F("hgem2DGain","Triple-GEM 2D Pulse Cluster Amp. vs Position; GEM Channel# ; ADC Amplitude",504,-0.5,503.5,100,0.,4960);
+  hgem2DMaxGain = new TH2F("hgem2DMaxGain","Triple-GEM 2D Pulse Cluster Max Sum vs Max Position; GEM Max Hit Channel# ; Cluster ADC Sum",504,-0.5,503.5,250,0.,10000);
+  hgem2DMaxGainSingle = new TH2F("hgem2DMaxGainSingle","Triple-GEM 2D Pulse Cluster Max Amp. vs Max Position; GEM Max Hit Channel# ; Cluster Max ADC Amp",504,-0.5,503.5,100,0.,4960);
+  hgem2DGainLateTime = new TH2F("hgem2DGainLateTime","Triple-GEM 2D Pulse Cluster Max Amp. vs Time; Drift Time (*8ns) ; ADC Amplitude",200,0.5,200.5,100,0.,4960);
+  hgemGainMaxLate = new TH1F("hgemGainMaxLate","Triple-GEM Pulse Cluster Max Amp. in Latest Time; ADC Amplitude",100,0.,4960);
+  hgem2DGainSumLateTime = new TH2F("hgem2DGainSumLateTime","Triple-GEM 2D Pulse Cluster Sum vs Time; Drift Time (*8ns) ; ADC Amplitude Sum",200,0.5,200.5,250,0.,10000);
+  hgemGainSumLate = new TH1F("hgemGainSumLate","Triple-GEM Pulse Cluster Sum Amp. in Latest Time; ADC Amplitude Sum",250,0.,10000);
   
   //-- Clustering and track finding histos
   gErrorIgnoreLevel = kBreak; // Suppress warning messages from empty chi^2 fit data
@@ -253,6 +275,13 @@ void trdclass_halld25::Loop() {
     //            Process fADC125 Pulse Information (GEM-TRD)
     //=================================================================
     
+     #ifdef GAIN_CALIB
+        float gemGainAmps[504];
+        for (ULong64_t i=0; i<504; i++) {
+          gemGainAmps[i] = -1.;
+        }
+      #endif
+    
 for (ULong64_t i=0; i<f125_pulse_count; i++) {
       
       float peak_amp = f125_pulse_peak_amp->at(i);
@@ -277,7 +306,7 @@ for (ULong64_t i=0; i<f125_pulse_count; i++) {
         gem_ytime[nypulse]=time;
         nypulse++;
         //-- Fill Histo to Perform Chi^2 Track Fitting On
-        f125_fit->Fill(time,gemChanY,amp); //only has two entries maybe should adjust the threshold
+        f125_fit->Fill(time,gemChanY,amp);
         f125_yamp2d->Fill(time,gemChanY,amp);
         f125_el_y->Fill(amp);
         gem_pos_y[i]=gemChanY;
@@ -286,6 +315,9 @@ for (ULong64_t i=0; i<f125_pulse_count; i++) {
       }
       
       if (gemChanX>-1 && amp>THRESH) {
+        #ifdef GAIN_CALIB
+            gemGainAmps[gemChanX] = amp;
+          #endif
         gem_xpos.push_back(gemChanX);
         gem_dedx.push_back(amp);
         gem_zpos.push_back(time);
@@ -331,6 +363,42 @@ for (ULong64_t i=0; i<f125_pulse_count; i++) {
         }
       }
     }
+    
+    #ifdef GAIN_CALIB
+        
+        float gemAmpSum=0.;
+        int gemStripSum=0;
+        
+        if (gem_xamp_max>FE55_THRESH) {
+          for (int i=0; i<10; i++) {
+            if (gemGainAmps[gem_xch_max + i]>THRESH) {
+              gemAmpSum+=gemGainAmps[gem_xch_max + i];
+              gemStripSum++;
+            } else {break;}
+          }
+          for (int i=1; i<10; i++) {
+            if (gemGainAmps[gem_xch_max - i]>THRESH) {
+              gemAmpSum+=gemGainAmps[gem_xch_max - i];
+              gemStripSum++;
+            } else {break;}
+          }
+          if (gemAmpSum>THRESH && gemStripSum>1 && gemStripSum<10) { //Limit number of strips fired to try and reduce noisey events
+            hgemGainSum->Fill(gemAmpSum);
+            hgemGainSpread->Fill(gemStripSum);
+            hgemGainMultiplicity->Fill(gemStripSum,gemAmpSum);
+            hgem2DMaxGain->Fill(gem_xch_max,gemAmpSum);
+            hgem2DMaxGainSingle->Fill(gem_xch_max,gem_xamp_max);
+            hgem2DGainLateTime->Fill(gem_xtime_max,gem_xamp_max);
+            if (gem_xtime_max>115) hgemGainMaxLate->Fill(gem_xamp_max);
+            hgem2DGainSumLateTime->Fill(gem_xtime_max,gemAmpSum);
+            if (gem_xtime_max>115) hgemGainSumLate->Fill(gemAmpSum);
+            for (int i=0; i<504; i++) {
+              if (gemGainAmps[i]>THRESH) { hgem2DGain->Fill(i,gemGainAmps[i]); }
+            }
+          }
+        }
+      #endif
+    
     //============== End Process fADC125 Pulse Information ==================
     
     //=========================================================================
@@ -723,6 +791,23 @@ for (ULong64_t i=0; i<f125_pulse_count; i++) {
     cc=NextPlot(nxd,nyd);   f125_raw_xamp2d->Draw("colz");
     cc=NextPlot(nxd,nyd);   f125_raw_yamp2d->Draw("colz");
     cc=NextPlot(nxd,nyd);   f125_xy2d->Draw("colz");
+    
+    #ifdef GAIN_CALIB
+    
+    htitle("  Gain Calib");    if (!COMPACT) cc=NextPlot(0,0);
+    cc=NextPlot(nxd,nyd);   hgemGainSum->Draw("");
+    cc=NextPlot(nxd,nyd);   hgemGainSpread->Draw("");
+    cc=NextPlot(nxd,nyd);   hgemGainMultiplicity->Draw("colz");
+    cc=NextPlot(nxd,nyd);   hgem2DGain->Draw("colz");
+    cc=NextPlot(nxd,nyd);   hgem2DMaxGain->Draw("colz");
+    cc=NextPlot(nxd,nyd);   hgem2DMaxGainSingle->Draw("colz");
+    
+    htitle("  Gain Calib");    if (!COMPACT) cc=NextPlot(0,0);
+    cc=NextPlot(nxd,nyd);   hgem2DGainLateTime->Draw("colz");
+    cc=NextPlot(nxd,nyd);   hgemGainMaxLate->Draw("");
+    cc=NextPlot(nxd,nyd);   hgem2DGainSumLateTime->Draw("colz");
+    cc=NextPlot(nxd,nyd);   hgemGainSumLate->Draw("");
+    #endif
     
     //--- close PDF file ----
     cc=NextPlot(-1,-1);
