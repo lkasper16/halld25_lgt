@@ -293,6 +293,10 @@ public :
    TH1F *hgemGainSum, *hgemGainSpread, *hgemGainMaxLate, *hgemGainSumLate;
    TH2F *hgem2DGain, *hgemGainMultiplicity, *hgem2DMaxGain, *hgem2DMaxGainSingle;
    TH2F *hgem2DGainLateTime, *hgem2DGainSumLateTime;
+   
+   TH1F *hgemGainSum_y, *hgemGainSpread_y, *hgemGainMaxLate_y, *hgemGainSumLate_y;
+   TH2F *hgem2DGain_y, *hgemGainMultiplicity_y, *hgem2DMaxGain_y, *hgem2DMaxGainSingle_y;
+   TH2F *hgem2DGainLateTime_y, *hgem2DGainSumLateTime_y;
    TH2F *hevt, *hevtc, *hevti, *hevtf, *hevtL;
    
    //----- EVENT STRUCTURE -----
